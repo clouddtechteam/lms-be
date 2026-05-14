@@ -63,6 +63,7 @@ export const createBatch = async (req, res) => {
       name,
       startTime,
       endTime,
+      weekdays: req.body.weekdays || [],
       createdBy: req.user?.id,
     });
 
@@ -120,6 +121,7 @@ export const importBatches = async (req, res) => {
       name: row.name || row.batchId ? String(row.name || row.batchId) : 'Unnamed Batch',
       startTime: formatExcelTime(row.startTime),
       endTime: formatExcelTime(row.endTime),
+      weekdays: row.weekdays ? String(row.weekdays).split(',').map(d => parseInt(d.trim())).filter(n => !isNaN(n)) : [],
       createdBy: req.user.id,
     }));
 

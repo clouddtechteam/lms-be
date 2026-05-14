@@ -100,14 +100,13 @@ export const getSignature = (req, res) => {
 export const getMyLiveClasses = async (req, res) => {
   try {
     const studentId = req.user.id;
+    const todayWeekday = new Date().getDay();
 
     // 1. Get ALL active subscriptions for this student
     const subs = await StudentSubscription.find({ studentId, status: 'active' });
-    if (!subs || subs.length === 0) {
-      return res.json([]);
-    }
+    if (!subs || subs.length === 0) return res.json([]);
 
-    // 2. Aggregate all batch IDs from all records
+    // 2. Aggregate all batch IDs
     let batchIds = [];
     subs.forEach(sub => {
       if (sub.batchIds && sub.batchIds.length > 0) {
@@ -119,13 +118,39 @@ export const getMyLiveClasses = async (req, res) => {
 
     if (batchIds.length === 0) return res.json([]);
 
-    // 3. Fetch all meetings for these batches that haven't ended
+    // 3. Fetch batches
+    const batches = await Batch.find({ _id: { $in: batchIds } });
+    if (batches.length === 0) return res.json([]);
+
+    // 4. Fetch meetings for these batches
     const meetings = await Meet.find({
       batch: { $in: batchIds },
       status: { $ne: 'ended' }
     }).populate('batch');
 
-    res.json(meetings);
+    // 5. Create a map of batchId -> meeting
+    const meetingMap = {};
+    meetings.forEach(m => {
+      meetingMap[String(m.batch?._id || m.batch)] = m;
+    });
+
+    // 6. Return the batches as "meets" (placeholders if no meet exists)
+    const result = batches.map(batch => {
+      const bId = String(batch._id);
+      const existingMeet = meetingMap[bId];
+
+      if (existingMeet) return existingMeet;
+
+      return {
+        _id: `placeholder-${bId}`,
+        batch: batch,
+        meetingNumber: 'Not Scheduled',
+        status: 'scheduled',
+        isPlaceholder: true
+      };
+    });
+
+    res.json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

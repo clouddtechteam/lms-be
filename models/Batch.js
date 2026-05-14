@@ -27,6 +27,10 @@ const batchSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    weekdays: {
+      type: [Number], // 0 for Sunday, 1 for Monday, etc.
+      default: [],
+    },
   },
   { timestamps: true }
 );
