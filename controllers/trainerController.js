@@ -83,7 +83,7 @@ export const importTrainers = async (req, res) => {
 export const updateTrainer = async (req, res) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, phone, batchIds } = req.body;
+    const { firstName, lastName, phone, password, batchIds } = req.body;
     
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ message: 'Trainer not found' });
@@ -91,6 +91,9 @@ export const updateTrainer = async (req, res) => {
     if (firstName) user.firstName = firstName;
     if (lastName) user.lastName = lastName;
     if (phone) user.phone = phone;
+    if (password && String(password).trim().length >= 4) {
+      user.password = String(password).trim();
+    }
     
     if (batchIds) {
       const resolvedBatchObjectIds = [];
