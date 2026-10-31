@@ -7,13 +7,17 @@ import {
   getTrainerLiveClasses,
   getCronConfig,
   updateCronConfig,
-  triggerCronNow
+  triggerCronNow,
+  wakeAndSyncCron
 } from '../controllers/meetController.js';
 import protect from '../middleware/authMiddleware.js';
 import requireRole from '../middleware/roleMiddleware.js';
 
 const router = express.Router();
 
+// Public wake-and-sync endpoint for external schedulers (Render / cron-job.org)
+router.get('/cron/wake-and-sync', wakeAndSyncCron);
+router.post('/cron/wake-and-sync', wakeAndSyncCron);
 
 // Temporarily move signature above protect to debug
 router.post('/signature', getSignature);

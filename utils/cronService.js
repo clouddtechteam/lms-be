@@ -98,10 +98,10 @@ export const reloadCron = async () => {
     return;
   }
 
-  // Parse time "HH:mm"
-  const [hourStr, minStr] = (config.runTime || '06:00').split(':');
+  // Parse time "HH:mm" in IST (Asia/Kolkata)
+  const [hourStr, minStr] = (config.runTime || '02:00').split(':');
   const minute = parseInt(minStr, 10) || 0;
-  const hour = parseInt(hourStr, 10) || 6;
+  const hour = parseInt(hourStr, 10) || 2;
 
   let cronExpression = `${minute} ${hour} * * *`;
 
@@ -116,12 +116,18 @@ export const reloadCron = async () => {
     }
   }
 
-  console.log(`[MeetCron] Scheduling auto-generation cron: "${cronExpression}"`);
+  console.log(`[MeetCron] Scheduling auto-generation cron: "${cronExpression}" (Asia/Kolkata IST)`);
 
-  activeCronTask = cron.schedule(cronExpression, async () => {
-    console.log('[MeetCron] Running scheduled meeting generation...');
-    await runMeetingGenerationJob({ isManual: false });
-  });
+  activeCronTask = cron.schedule(
+    cronExpression,
+    async () => {
+      console.log('[MeetCron] Running scheduled meeting generation at 2 AM IST...');
+      await runMeetingGenerationJob({ isManual: false });
+    },
+    {
+      timezone: 'Asia/Kolkata'
+    }
+  );
 };
 
 /**

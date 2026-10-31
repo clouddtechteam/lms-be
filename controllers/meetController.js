@@ -269,3 +269,24 @@ export const triggerCronNow = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+/**
+ * Public webhook endpoint for external schedulers (e.g. cron-job.org / Render Cron)
+ * to wake up Render Free tier at 2:00 AM IST and trigger meeting sync
+ */
+export const wakeAndSyncCron = async (req, res) => {
+  try {
+    const providedSecret = req.query.secret || req.headers['x-cron-secret'];
+    const validSecret = process.env.CRON_SECRET || process.env.ZOOM_SECRET_TOKEN || 'cron_sync_2am';
+
+    if (providedSecret !== validSecret) {
+      return res.status(401).json({ message: 'Unauthorized: Invalid cron secret' });
+    }
+
+    console.log('[MeetCron] External wake-and-sync triggered at:', new Date().toISOString());
+    const results = await runMeetingGenerationJob({ isManual: false });
+    res.json({ message: 'External cron sync completed successfully', results });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

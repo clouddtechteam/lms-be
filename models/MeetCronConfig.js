@@ -19,8 +19,8 @@ const meetCronConfigSchema = new mongoose.Schema({
     default: [1, 2, 3, 4, 5]
   },
   runTime: {
-    type: String, // "06:00" in 24-hour format
-    default: '06:00'
+    type: String, // "02:00" in 24-hour IST format
+    default: '02:00'
   },
   scope: {
     type: String,
