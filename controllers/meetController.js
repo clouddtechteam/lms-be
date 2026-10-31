@@ -236,7 +236,7 @@ export const getCronConfig = async (req, res) => {
 
 export const updateCronConfig = async (req, res) => {
   try {
-    const { enabled, scheduleType, runDays, runTime, scope, batchIds } = req.body;
+    const { enabled, scheduleType, refreshIntervalDays, runDays, runTime, scope, batchIds } = req.body;
     let config = await MeetCronConfig.findOne();
     if (!config) {
       config = new MeetCronConfig();
@@ -244,6 +244,7 @@ export const updateCronConfig = async (req, res) => {
 
     if (enabled !== undefined) config.enabled = enabled;
     if (scheduleType !== undefined) config.scheduleType = scheduleType;
+    if (refreshIntervalDays !== undefined) config.refreshIntervalDays = Math.max(1, parseInt(refreshIntervalDays) || 1);
     if (runDays !== undefined) config.runDays = runDays;
     if (runTime !== undefined) config.runTime = runTime;
     if (scope !== undefined) config.scope = scope;
@@ -260,7 +261,8 @@ export const updateCronConfig = async (req, res) => {
 
 export const triggerCronNow = async (req, res) => {
   try {
-    const results = await runMeetingGenerationJob();
+    const { batchIds } = req.body || {};
+    const results = await runMeetingGenerationJob({ isManual: true, batchIdsOverride: batchIds });
     res.json({ message: 'Meeting generation completed', results });
   } catch (error) {
     res.status(500).json({ message: error.message });

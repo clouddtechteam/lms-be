@@ -4,12 +4,45 @@ import StudentSubscription from '../models/StudentSubscription.js';
 
 export const getStudents = async (req, res) => {
   try {
-    const students = await User.find({ role: 'student' });
-    const studentsWithSubs = await Promise.all(students.map(async (student) => {
-      const subscriptions = await StudentSubscription.find({ studentId: student._id }).populate('batchId');
-      return { ...student.toObject(), subscriptions };
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const requestedLimit = parseInt(req.query.limit) || 30;
+    const limit = Math.min(30, Math.max(1, requestedLimit)); // Enforce max 30 per page
+    const skip = (page - 1) * limit;
+
+    const total = await User.countDocuments({ role: 'student' });
+
+    const students = await User.find({ role: 'student' })
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // Batch fetch subscriptions in ONE single query instead of N queries
+    const studentIds = students.map(s => s._id);
+    const subscriptions = await StudentSubscription.find({ studentId: { $in: studentIds } })
+      .populate('batchId')
+      .lean();
+
+    const subMap = {};
+    subscriptions.forEach(sub => {
+      const sId = String(sub.studentId);
+      if (!subMap[sId]) subMap[sId] = [];
+      subMap[sId].push(sub);
+    });
+
+    const studentsWithSubs = students.map(student => ({
+      ...student,
+      subscriptions: subMap[String(student._id)] || []
     }));
-    res.json(studentsWithSubs);
+
+    res.json({
+      students: studentsWithSubs,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1,
+      limit
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

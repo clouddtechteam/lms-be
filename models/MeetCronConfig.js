@@ -7,8 +7,12 @@ const meetCronConfigSchema = new mongoose.Schema({
   },
   scheduleType: {
     type: String,
-    enum: ['daily', 'selective_days'],
+    enum: ['daily', 'interval', 'selective_days'],
     default: 'daily'
+  },
+  refreshIntervalDays: {
+    type: Number, // e.g. 1 (every day), 2 (every 2 days), 7 (every week)
+    default: 1
   },
   runDays: {
     type: [Number], // 0: Sun, 1: Mon, ..., 6: Sat
@@ -38,7 +42,16 @@ const meetCronConfigSchema = new mongoose.Schema({
   lastRunSummary: {
     type: String,
     default: ''
-  }
+  },
+  lastRunResults: [{
+    batchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Batch' },
+    batchName: String,
+    meetingNumber: String,
+    password: String,
+    joinUrl: String,
+    status: String,
+    error: String
+  }]
 }, { timestamps: true });
 
 const MeetCronConfig = mongoose.model('MeetCronConfig', meetCronConfigSchema);

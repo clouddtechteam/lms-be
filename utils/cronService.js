@@ -7,8 +7,12 @@ let activeCronTask = null;
 
 /**
  * Execute meeting generation logic based on config
+ * @param {Object} options
+ * @param {boolean} options.isManual - If true, bypasses day-of-week restriction so admin can generate anytime
+ * @param {Array} options.batchIdsOverride - Optional list of specific batch IDs to sync
  */
-export const runMeetingGenerationJob = async () => {
+export const runMeetingGenerationJob = async (options = {}) => {
+  const { isManual = false, batchIdsOverride = null } = options;
   const config = await MeetCronConfig.findOne() || await MeetCronConfig.create({});
   config.lastRunAt = new Date();
   config.lastRunStatus = 'running';
@@ -19,23 +23,39 @@ export const runMeetingGenerationJob = async () => {
 
     let targetBatchQuery = {};
 
-    if (config.scope === 'selective' && config.batchIds && config.batchIds.length > 0) {
+    if (batchIdsOverride && batchIdsOverride.length > 0) {
+      targetBatchQuery._id = { $in: batchIdsOverride };
+    } else if (config.scope === 'selective' && config.batchIds && config.batchIds.length > 0) {
       targetBatchQuery._id = { $in: config.batchIds };
     }
 
     const batches = await Batch.find(targetBatchQuery);
 
-    // Filter batches that are scheduled for today (if weekdays specified)
-    const eligibleBatches = batches.filter(b => {
-      if (!b.weekdays || b.weekdays.length === 0) return true;
-      return b.weekdays.includes(todayDay);
-    });
+    if (batches.length === 0) {
+      config.lastRunStatus = 'failed';
+      config.lastRunSummary = config.scope === 'selective'
+        ? 'No batches selected in saved configuration. Please select batches under "Selective Batches" and save.'
+        : 'No batches found in the LMS to sync.';
+      config.lastRunResults = [];
+      await config.save();
+      return { total: 0, successful: 0, failed: 0, summary: config.lastRunSummary, details: [] };
+    }
+
+    // If manual trigger, generate for all targeted batches regardless of current day.
+    // If automated cron, only generate for batches active today (if weekdays specified).
+    const eligibleBatches = isManual
+      ? batches
+      : batches.filter(b => {
+          if (!b.weekdays || b.weekdays.length === 0) return true;
+          return b.weekdays.includes(todayDay);
+        });
 
     if (eligibleBatches.length === 0) {
       config.lastRunStatus = 'success';
       config.lastRunSummary = `No batches scheduled for today (Day ${todayDay}).`;
+      config.lastRunResults = [];
       await config.save();
-      return { total: 0, successful: 0, failed: 0, summary: config.lastRunSummary };
+      return { total: 0, successful: 0, failed: 0, summary: config.lastRunSummary, details: [] };
     }
 
     const batchIdsToSync = eligibleBatches.map(b => b._id);
@@ -43,6 +63,7 @@ export const runMeetingGenerationJob = async () => {
 
     config.lastRunStatus = results.failed === 0 ? 'success' : (results.successful > 0 ? 'partial' : 'failed');
     config.lastRunSummary = `Generated ${results.successful} / ${results.total} meetings successfully (${results.failed} failed).`;
+    config.lastRunResults = results.details || [];
     await config.save();
 
     console.log(`[MeetCron] Job completed: ${config.lastRunSummary}`);
@@ -50,6 +71,7 @@ export const runMeetingGenerationJob = async () => {
   } catch (error) {
     config.lastRunStatus = 'failed';
     config.lastRunSummary = `Error: ${error.message}`;
+    config.lastRunResults = [];
     await config.save();
     console.error(`[MeetCron] Job failed:`, error);
     throw error;
@@ -81,19 +103,24 @@ export const reloadCron = async () => {
   const minute = parseInt(minStr, 10) || 0;
   const hour = parseInt(hourStr, 10) || 6;
 
-  // Parse days
-  let daysCron = '*';
-  if (config.runDays && config.runDays.length > 0 && config.runDays.length < 7) {
-    daysCron = config.runDays.join(',');
+  let cronExpression = `${minute} ${hour} * * *`;
+
+  if (config.scheduleType === 'interval') {
+    const intervalDays = Math.max(1, parseInt(config.refreshIntervalDays) || 1);
+    if (intervalDays > 1) {
+      cronExpression = `${minute} ${hour} */${intervalDays} * *`;
+    }
+  } else if (config.scheduleType === 'selective_days') {
+    if (config.runDays && config.runDays.length > 0 && config.runDays.length < 7) {
+      cronExpression = `${minute} ${hour} * * ${config.runDays.join(',')}`;
+    }
   }
 
-  // Cron format: "minute hour * * day-of-week"
-  const cronExpression = `${minute} ${hour} * * ${daysCron}`;
   console.log(`[MeetCron] Scheduling auto-generation cron: "${cronExpression}"`);
 
   activeCronTask = cron.schedule(cronExpression, async () => {
     console.log('[MeetCron] Running scheduled meeting generation...');
-    await runMeetingGenerationJob();
+    await runMeetingGenerationJob({ isManual: false });
   });
 };
 

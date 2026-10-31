@@ -151,6 +151,7 @@ export const syncMeetingsForBatches = async (batchIds = null) => {
         batchName: batch.name,
         status: 'success',
         meetingNumber: res.meetingNumber,
+        password: res.password,
         joinUrl: res.joinUrl
       });
     } catch (err) {
