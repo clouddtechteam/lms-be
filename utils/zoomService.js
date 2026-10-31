@@ -35,7 +35,11 @@ export const getZoomAccessToken = async () => {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error_description || data.message || `Zoom OAuth Failed (${response.status})`);
+    if (data.error === 'unsupported_grant_type' || (typeof data.reason === 'string' && data.reason.includes('account_credential'))) {
+      throw new Error('Zoom App Mismatch: Current credentials belong to a Meeting SDK app. Server meeting creation requires a "Server-to-Server OAuth" app in marketplace.zoom.us with meeting:write scope.');
+    }
+    const errorMsg = data.reason || data.error_description || data.message || data.error || `Zoom OAuth Failed (${response.status})`;
+    throw new Error(errorMsg);
   }
 
   cachedToken = data.access_token;
