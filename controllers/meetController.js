@@ -236,7 +236,7 @@ export const getCronConfig = async (req, res) => {
 
 export const updateCronConfig = async (req, res) => {
   try {
-    const { enabled, scheduleType, refreshIntervalDays, runDays, runTime, scope, batchIds } = req.body;
+    const { enabled, scheduleType, refreshIntervalDays, runDays, runTime, scope, linkMode, batchIds } = req.body;
     let config = await MeetCronConfig.findOne();
     if (!config) {
       config = new MeetCronConfig();
@@ -248,6 +248,7 @@ export const updateCronConfig = async (req, res) => {
     if (runDays !== undefined) config.runDays = runDays;
     if (runTime !== undefined) config.runTime = runTime;
     if (scope !== undefined) config.scope = scope;
+    if (linkMode !== undefined) config.linkMode = linkMode;
     if (batchIds !== undefined) config.batchIds = batchIds;
 
     await config.save();

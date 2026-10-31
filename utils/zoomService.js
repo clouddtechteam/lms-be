@@ -130,9 +130,59 @@ export const createZoomMeetingForBatch = async (batch) => {
 };
 
 /**
- * Generate meetings for specific batches or all active batches
+ * Create a single shared Zoom meeting via Zoom REST API
  */
-export const syncMeetingsForBatches = async (batchIds = null) => {
+export const createSingleZoomMeeting = async (options = {}) => {
+  const accessToken = await getZoomAccessToken();
+  const topic = options.topic || 'LMS Live Class';
+
+  const meetingPayload = {
+    topic,
+    type: 2, // Scheduled meeting
+    start_time: new Date().toISOString(),
+    duration: 180, // 3 hours window
+    timezone: 'Asia/Kolkata',
+    settings: {
+      host_video: true,
+      participant_video: true,
+      join_before_host: true,
+      waiting_room: false,
+      mute_upon_entry: false
+    }
+  };
+
+  const response = await fetch('https://api.zoom.us/v2/users/me/meetings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(meetingPayload)
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || `Zoom API meeting creation failed (${response.status})`);
+  }
+
+  const meetingNumber = String(data.id).replace(/\s/g, '');
+  const password = data.password || '';
+  const joinUrl = data.join_url || `https://us02web.zoom.us/j/${meetingNumber}?pwd=${password}`;
+
+  return {
+    meetingNumber,
+    password,
+    joinUrl
+  };
+};
+
+/**
+ * Generate meetings for specific batches or all active batches
+ * @param {Array|null} batchIds - Array of batch IDs or null for all
+ * @param {string} linkMode - 'single_shared' (one link for all batches) or 'per_batch'
+ */
+export const syncMeetingsForBatches = async (batchIds = null, linkMode = 'single_shared') => {
   let query = {};
   if (batchIds && batchIds.length > 0) {
     query = { _id: { $in: batchIds } };
@@ -146,6 +196,72 @@ export const syncMeetingsForBatches = async (batchIds = null) => {
     details: []
   };
 
+  if (batches.length === 0) {
+    return results;
+  }
+
+  // MODE 1: SINGLE SHARED LINK FOR ALL BATCHES (Default)
+  if (linkMode === 'single_shared') {
+    try {
+      const sharedMeeting = await createSingleZoomMeeting({ topic: 'LMS Live Classes' });
+
+      for (const batch of batches) {
+        try {
+          const startTime = getTodayTimeDate(batch.startTime);
+          const endTime = getTodayTimeDate(batch.endTime);
+          const duration = Math.max(15, Math.floor((endTime - startTime) / (1000 * 60))) || 60;
+
+          await Meet.findOneAndUpdate(
+            { batch: batch._id },
+            {
+              batch: batch._id,
+              meetingNumber: sharedMeeting.meetingNumber,
+              password: sharedMeeting.password,
+              joinUrl: sharedMeeting.joinUrl,
+              startTime,
+              endTime,
+              duration,
+              status: 'scheduled'
+            },
+            { upsert: true, new: true }
+          );
+
+          results.successful++;
+          results.details.push({
+            batchId: batch._id,
+            batchName: batch.name,
+            status: 'success',
+            meetingNumber: sharedMeeting.meetingNumber,
+            password: sharedMeeting.password,
+            joinUrl: sharedMeeting.joinUrl
+          });
+        } catch (err) {
+          results.failed++;
+          results.details.push({
+            batchId: batch._id,
+            batchName: batch.name,
+            status: 'error',
+            error: err.message
+          });
+        }
+      }
+    } catch (createErr) {
+      // Zoom API call failed
+      for (const batch of batches) {
+        results.failed++;
+        results.details.push({
+          batchId: batch._id,
+          batchName: batch.name,
+          status: 'error',
+          error: createErr.message
+        });
+      }
+    }
+
+    return results;
+  }
+
+  // MODE 2: SEPARATE LINK PER BATCH
   for (const batch of batches) {
     try {
       const res = await createZoomMeetingForBatch(batch);

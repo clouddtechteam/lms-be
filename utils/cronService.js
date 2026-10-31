@@ -59,7 +59,7 @@ export const runMeetingGenerationJob = async (options = {}) => {
     }
 
     const batchIdsToSync = eligibleBatches.map(b => b._id);
-    const results = await syncMeetingsForBatches(batchIdsToSync);
+    const results = await syncMeetingsForBatches(batchIdsToSync, config.linkMode || 'single_shared');
 
     config.lastRunStatus = results.failed === 0 ? 'success' : (results.successful > 0 ? 'partial' : 'failed');
     config.lastRunSummary = `Generated ${results.successful} / ${results.total} meetings successfully (${results.failed} failed).`;

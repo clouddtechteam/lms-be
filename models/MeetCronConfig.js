@@ -27,6 +27,11 @@ const meetCronConfigSchema = new mongoose.Schema({
     enum: ['all', 'selective'],
     default: 'all'
   },
+  linkMode: {
+    type: String,
+    enum: ['single_shared', 'per_batch'],
+    default: 'single_shared'
+  },
   batchIds: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Batch'
