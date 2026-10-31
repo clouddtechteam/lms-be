@@ -134,7 +134,7 @@ export const createZoomMeetingForBatch = async (batch) => {
  */
 export const createSingleZoomMeeting = async (options = {}) => {
   const accessToken = await getZoomAccessToken();
-  const topic = options.topic || 'LMS Live Class';
+  const topic = options.topic || 'Mallu Compass';
 
   const meetingPayload = {
     topic,
