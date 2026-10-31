@@ -4,7 +4,10 @@ import {
   createOrUpdateMeet,
   getSignature,
   getMyLiveClasses,
-  getTrainerLiveClasses
+  getTrainerLiveClasses,
+  getCronConfig,
+  updateCronConfig,
+  triggerCronNow
 } from '../controllers/meetController.js';
 import protect from '../middleware/authMiddleware.js';
 import requireRole from '../middleware/roleMiddleware.js';
@@ -17,6 +20,11 @@ router.post('/signature', getSignature);
 
 // SECURE ALL OTHER ROUTES
 router.use(protect);
+
+// Admin only: Cron & automation routes
+router.get('/cron/config', requireRole(['admin']), getCronConfig);
+router.put('/cron/config', requireRole(['admin']), updateCronConfig);
+router.post('/cron/trigger-now', requireRole(['admin']), triggerCronNow);
 
 // Student specific: Get all live classes based on their subscription
 router.get('/my-live-classes', getMyLiveClasses);

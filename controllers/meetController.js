@@ -4,6 +4,8 @@ import StudentSubscription from '../models/StudentSubscription.js';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import MeetCronConfig from '../models/MeetCronConfig.js';
+import { reloadCron, runMeetingGenerationJob } from '../utils/cronService.js';
 export const getMeetByBatch = async (req, res) => {
   try {
     const { batchId } = req.params;
@@ -16,7 +18,7 @@ export const getMeetByBatch = async (req, res) => {
 
 export const createOrUpdateMeet = async (req, res) => {
   try {
-    const { batchId, meetingNumber, password, status } = req.body;
+    const { batchId, meetingNumber, password, joinUrl, status } = req.body;
 
     const batch = await Batch.findById(batchId);
     if (!batch) return res.status(404).json({ message: 'Batch not found' });
@@ -35,9 +37,13 @@ export const createOrUpdateMeet = async (req, res) => {
     const endTime = getTodayTimeDate(batch.endTime);
     const duration = Math.floor((endTime - startTime) / (1000 * 60)); // in minutes
 
+    const cleanMeetingNumber = meetingNumber.replace(/\s/g, '');
+    const cleanJoinUrl = joinUrl || `https://us02web.zoom.us/j/${cleanMeetingNumber}?pwd=${password}`;
+
     if (meet) {
-      meet.meetingNumber = meetingNumber.replace(/\s/g, '');
+      meet.meetingNumber = cleanMeetingNumber;
       meet.password = password;
+      meet.joinUrl = cleanJoinUrl;
       meet.startTime = startTime;
       meet.endTime = endTime;
       meet.duration = duration;
@@ -46,8 +52,9 @@ export const createOrUpdateMeet = async (req, res) => {
     } else {
       meet = await Meet.create({
         batch: batchId,
-        meetingNumber: meetingNumber.replace(/\s/g, ''),
+        meetingNumber: cleanMeetingNumber,
         password,
+        joinUrl: cleanJoinUrl,
         startTime,
         endTime,
         duration,
@@ -209,6 +216,52 @@ export const getTrainerLiveClasses = async (req, res) => {
     });
 
     res.json(result);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ── Cron & Automation Controllers ──
+export const getCronConfig = async (req, res) => {
+  try {
+    let config = await MeetCronConfig.findOne().populate('batchIds', 'name batchId startTime endTime weekdays');
+    if (!config) {
+      config = await MeetCronConfig.create({});
+    }
+    res.json(config);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const updateCronConfig = async (req, res) => {
+  try {
+    const { enabled, scheduleType, runDays, runTime, scope, batchIds } = req.body;
+    let config = await MeetCronConfig.findOne();
+    if (!config) {
+      config = new MeetCronConfig();
+    }
+
+    if (enabled !== undefined) config.enabled = enabled;
+    if (scheduleType !== undefined) config.scheduleType = scheduleType;
+    if (runDays !== undefined) config.runDays = runDays;
+    if (runTime !== undefined) config.runTime = runTime;
+    if (scope !== undefined) config.scope = scope;
+    if (batchIds !== undefined) config.batchIds = batchIds;
+
+    await config.save();
+    await reloadCron();
+
+    res.json({ message: 'Cron configuration saved and reloaded', config });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const triggerCronNow = async (req, res) => {
+  try {
+    const results = await runMeetingGenerationJob();
+    res.json({ message: 'Meeting generation completed', results });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

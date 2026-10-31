@@ -17,6 +17,9 @@ const meetSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  joinUrl: {
+    type: String
+  },
   startTime: Date,
   endTime: Date,
   duration: Number,

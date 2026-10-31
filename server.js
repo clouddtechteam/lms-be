@@ -7,14 +7,15 @@ import batchRoutes from './routes/batchRoutes.js';
 import trainerRoutes from './routes/trainerRoutes.js';
 import studentRoutes from './routes/studentRoutes.js';
 import meetRoutes from './routes/meetRoutes.js';
-
-
+import { initMeetCron } from './utils/cronService.js';
 
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-connectDB();
+connectDB().then(() => {
+  initMeetCron();
+});
 
 app.use(cors());
 app.use(express.json());
