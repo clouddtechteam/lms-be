@@ -268,8 +268,21 @@ export const syncMeetingsForBatches = async (batchIds = null, linkMode = 'single
         }
       }
 
-      // Automatically clean up old meetings in Zoom using CRUD app, keeping only the new shared meeting
-      autoCleanupOldMeetings({ keepMeetingNumber: sharedMeeting.meetingNumber }).catch(err => {
+      // In single_shared mode, synchronize all Meet records in the DB to the single shared meeting
+      await Meet.updateMany(
+        { meetingNumber: { $ne: sharedMeeting.meetingNumber } },
+        {
+          $set: {
+            meetingNumber: sharedMeeting.meetingNumber,
+            password: sharedMeeting.password,
+            joinUrl: sharedMeeting.joinUrl,
+            status: 'scheduled'
+          }
+        }
+      );
+
+      // Automatically clean up all other old meetings in Zoom using CRUD app, keeping strictly only the new shared meeting
+      autoCleanupOldMeetings({ keepMeetingNumber: sharedMeeting.meetingNumber, strictSingle: true }).catch(err => {
         console.warn(`[ZoomService] Non-fatal error in autoCleanupOldMeetings:`, err.message);
       });
     } catch (createErr) {

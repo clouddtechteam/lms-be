@@ -40,10 +40,24 @@ const run = async () => {
     process.exit(1);
   }
 
-  // 3. Scan MongoDB
+  // 3. Scan MongoDB & Clean Orphaned Records (from previously deleted batches)
   console.log('\n🔍 Scanning MongoDB for existing Meet records...');
+  const validBatchIds = new Set((await Batch.find({}, '_id')).map(b => String(b._id)));
+  const allMeetsRaw = await Meet.find();
+  const orphanedMeets = allMeetsRaw.filter(m => !validBatchIds.has(String(m.batch)));
+  if (orphanedMeets.length > 0) {
+    if (!isDryRun) {
+      for (const om of orphanedMeets) {
+        await Meet.findByIdAndDelete(om._id);
+      }
+      console.log(`🧹 Cleaned up ${orphanedMeets.length} orphaned Meet record(s) from deleted batches.`);
+    } else {
+      console.log(`  [DRY-RUN] Would clean up ${orphanedMeets.length} orphaned Meet record(s).`);
+    }
+  }
+
   const allMeets = await Meet.find().populate('batch', 'name');
-  console.log(`Found ${allMeets.length} Meet record(s) in database.`);
+  console.log(`Found ${allMeets.length} valid Meet record(s) in database matching active batches.`);
 
   const dbMeetingNumbers = new Set(
     allMeets
