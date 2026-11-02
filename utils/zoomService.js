@@ -203,7 +203,7 @@ export const syncMeetingsForBatches = async (batchIds = null, linkMode = 'single
   // MODE 1: SINGLE SHARED LINK FOR ALL BATCHES (Default)
   if (linkMode === 'single_shared') {
     try {
-      const sharedMeeting = await createSingleZoomMeeting({ topic: 'LMS Live Classes' });
+      const sharedMeeting = await createSingleZoomMeeting({ topic: 'Mallu Compass' });
 
       for (const batch of batches) {
         try {
