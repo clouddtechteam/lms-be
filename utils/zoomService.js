@@ -60,9 +60,49 @@ const getTodayTimeDate = (timeStr) => {
 };
 
 /**
+ * Delete / deactivate a Zoom meeting via Zoom REST API
+ * @param {string|number} meetingId
+ * @returns {Promise<boolean>}
+ */
+export const deleteZoomMeeting = async (meetingId) => {
+  if (!meetingId) return false;
+  const cleanId = String(meetingId).replace(/\s/g, '');
+  // Ignore placeholder or non-numeric meeting IDs
+  if (!/^\d{9,11}$/.test(cleanId)) {
+    return false;
+  }
+
+  try {
+    const accessToken = await getZoomAccessToken();
+    const response = await fetch(`https://api.zoom.us/v2/meetings/${cleanId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (response.status === 204 || response.status === 404) {
+      console.log(`[ZoomService] Zoom meeting ${cleanId} deactivated/deleted (HTTP ${response.status})`);
+      return true;
+    }
+
+    const data = await response.json().catch(() => ({}));
+    console.warn(`[ZoomService] Meeting deletion failed for ${cleanId} (${response.status}):`, data.message || response.statusText);
+    return false;
+  } catch (err) {
+    console.error(`[ZoomService] Error deleting meeting ${cleanId}:`, err.message);
+    return false;
+  }
+};
+
+/**
  * Create a new Zoom meeting for a given Batch via Zoom REST API
  */
 export const createZoomMeetingForBatch = async (batch) => {
+  // Capture existing meeting number to deactivate after creating the new one
+  const existingMeet = await Meet.findOne({ batch: batch._id });
+  const oldMeetingNumber = existingMeet?.meetingNumber;
+
   const accessToken = await getZoomAccessToken();
 
   const startTime = getTodayTimeDate(batch.startTime);
@@ -118,6 +158,13 @@ export const createZoomMeetingForBatch = async (batch) => {
     },
     { upsert: true, new: true }
   );
+
+  // Deactivate old meeting if it exists and differs from the new one
+  if (oldMeetingNumber && oldMeetingNumber !== meetingNumber) {
+    deleteZoomMeeting(oldMeetingNumber).catch(err => {
+      console.warn(`[ZoomService] Non-fatal error deactivating old meeting ${oldMeetingNumber}:`, err.message);
+    });
+  }
 
   return {
     batchId: batch._id,
@@ -203,6 +250,15 @@ export const syncMeetingsForBatches = async (batchIds = null, linkMode = 'single
   // MODE 1: SINGLE SHARED LINK FOR ALL BATCHES (Default)
   if (linkMode === 'single_shared') {
     try {
+      // Collect existing meeting numbers for these batches to deactivate old links
+      const targetBatchIds = batches.map(b => b._id);
+      const existingMeets = await Meet.find({ batch: { $in: targetBatchIds } });
+      const oldMeetingNumbers = new Set(
+        existingMeets
+          .map(m => m.meetingNumber)
+          .filter(Boolean)
+      );
+
       const sharedMeeting = await createSingleZoomMeeting({ topic: 'Mallu Compass' });
 
       for (const batch of batches) {
@@ -245,6 +301,12 @@ export const syncMeetingsForBatches = async (batchIds = null, linkMode = 'single
           });
         }
       }
+
+      // Deactivate all unique previous Zoom meetings that differ from the new shared meeting
+      const deletionPromises = [...oldMeetingNumbers]
+        .filter(oldNum => oldNum !== sharedMeeting.meetingNumber)
+        .map(oldNum => deleteZoomMeeting(oldNum));
+      await Promise.allSettled(deletionPromises);
     } catch (createErr) {
       // Zoom API call failed
       for (const batch of batches) {

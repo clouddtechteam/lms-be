@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import MeetCronConfig from '../models/MeetCronConfig.js';
 import { reloadCron, runMeetingGenerationJob } from '../utils/cronService.js';
+import { deleteZoomMeeting } from '../utils/zoomService.js';
 export const getMeetByBatch = async (req, res) => {
   try {
     const { batchId } = req.params;
@@ -32,6 +33,7 @@ export const createOrUpdateMeet = async (req, res) => {
     };
 
     let meet = await Meet.findOne({ batch: batchId });
+    const oldMeetingNumber = meet?.meetingNumber;
 
     const startTime = getTodayTimeDate(batch.startTime);
     const endTime = getTodayTimeDate(batch.endTime);
@@ -49,6 +51,13 @@ export const createOrUpdateMeet = async (req, res) => {
       meet.duration = duration;
       if (status) meet.status = status;
       await meet.save();
+
+      // Deactivate old Zoom meeting if meeting number changed
+      if (oldMeetingNumber && oldMeetingNumber !== cleanMeetingNumber) {
+        deleteZoomMeeting(oldMeetingNumber).catch(err => {
+          console.warn(`[MeetController] Non-fatal error deactivating old meeting ${oldMeetingNumber}:`, err.message);
+        });
+      }
     } else {
       meet = await Meet.create({
         batch: batchId,
