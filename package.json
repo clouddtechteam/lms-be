@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "start": "node server.js",
     "seed": "node seeders/seeder.js",
-    "seed:destroy": "node seeders/seeder.js destroy"
+    "seed:destroy": "node seeders/seeder.js destroy",
+    "zoom:clean": "node scripts/cleanOldZoomMeetings.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

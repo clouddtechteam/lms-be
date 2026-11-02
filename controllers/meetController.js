@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import MeetCronConfig from '../models/MeetCronConfig.js';
 import { reloadCron, runMeetingGenerationJob } from '../utils/cronService.js';
-import { deleteZoomMeeting } from '../utils/zoomService.js';
+import { deleteZoomMeeting } from '../utils/zoomCrudService.js';
 export const getMeetByBatch = async (req, res) => {
   try {
     const { batchId } = req.params;

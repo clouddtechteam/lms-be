@@ -1,5 +1,7 @@
 import Meet from '../models/Meet.js';
 import Batch from '../models/Batch.js';
+import { autoCleanupOldMeetings, deleteZoomMeeting } from './zoomCrudService.js';
+export { deleteZoomMeeting };
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
@@ -59,41 +61,7 @@ const getTodayTimeDate = (timeStr) => {
   return d;
 };
 
-/**
- * Delete / deactivate a Zoom meeting via Zoom REST API
- * @param {string|number} meetingId
- * @returns {Promise<boolean>}
- */
-export const deleteZoomMeeting = async (meetingId) => {
-  if (!meetingId) return false;
-  const cleanId = String(meetingId).replace(/\s/g, '');
-  // Ignore placeholder or non-numeric meeting IDs
-  if (!/^\d{9,11}$/.test(cleanId)) {
-    return false;
-  }
 
-  try {
-    const accessToken = await getZoomAccessToken();
-    const response = await fetch(`https://api.zoom.us/v2/meetings/${cleanId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-
-    if (response.status === 204 || response.status === 404) {
-      console.log(`[ZoomService] Zoom meeting ${cleanId} deactivated/deleted (HTTP ${response.status})`);
-      return true;
-    }
-
-    const data = await response.json().catch(() => ({}));
-    console.warn(`[ZoomService] Meeting deletion failed for ${cleanId} (${response.status}):`, data.message || response.statusText);
-    return false;
-  } catch (err) {
-    console.error(`[ZoomService] Error deleting meeting ${cleanId}:`, err.message);
-    return false;
-  }
-};
 
 /**
  * Create a new Zoom meeting for a given Batch via Zoom REST API
@@ -159,12 +127,10 @@ export const createZoomMeetingForBatch = async (batch) => {
     { upsert: true, new: true }
   );
 
-  // Deactivate old meeting if it exists and differs from the new one
-  if (oldMeetingNumber && oldMeetingNumber !== meetingNumber) {
-    deleteZoomMeeting(oldMeetingNumber).catch(err => {
-      console.warn(`[ZoomService] Non-fatal error deactivating old meeting ${oldMeetingNumber}:`, err.message);
-    });
-  }
+  // Automatically clean up old meetings in background using CRUD app
+  autoCleanupOldMeetings({ keepMeetingNumber: meetingNumber }).catch(err => {
+    console.warn(`[ZoomService] Non-fatal error in autoCleanupOldMeetings:`, err.message);
+  });
 
   return {
     batchId: batch._id,
@@ -302,11 +268,10 @@ export const syncMeetingsForBatches = async (batchIds = null, linkMode = 'single
         }
       }
 
-      // Deactivate all unique previous Zoom meetings that differ from the new shared meeting
-      const deletionPromises = [...oldMeetingNumbers]
-        .filter(oldNum => oldNum !== sharedMeeting.meetingNumber)
-        .map(oldNum => deleteZoomMeeting(oldNum));
-      await Promise.allSettled(deletionPromises);
+      // Automatically clean up old meetings in Zoom using CRUD app, keeping only the new shared meeting
+      autoCleanupOldMeetings({ keepMeetingNumber: sharedMeeting.meetingNumber }).catch(err => {
+        console.warn(`[ZoomService] Non-fatal error in autoCleanupOldMeetings:`, err.message);
+      });
     } catch (createErr) {
       // Zoom API call failed
       for (const batch of batches) {
@@ -345,6 +310,14 @@ export const syncMeetingsForBatches = async (batchIds = null, linkMode = 'single
         error: err.message
       });
     }
+  }
+
+  // Automatically clean up old meetings not belonging to any active batch
+  const activeMeetingNumbers = results.details.map(d => d.meetingNumber).filter(Boolean);
+  if (activeMeetingNumbers.length > 0) {
+    autoCleanupOldMeetings({ keepMeetingNumbers: activeMeetingNumbers }).catch(err => {
+      console.warn(`[ZoomService] Non-fatal error in autoCleanupOldMeetings:`, err.message);
+    });
   }
 
   return results;
